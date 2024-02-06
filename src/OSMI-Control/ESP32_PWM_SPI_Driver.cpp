@@ -213,8 +213,9 @@ void ESP32PwmSpiDriver::enable()
     this->status = EspDriverStatus_t::Moving;
 
     // set stall threshold to 0 while learning.
-    microStepperDriver.driver.writeReg(DRV8434SRegAddr::CTRL6, 0);
-    microStepperDriver.driver.writeReg(DRV8434SRegAddr::CTRL7, 0);
+    microStepperDriver.driver.writeReg(DRV8434SRegAddr::CTRL6, 1);
+    uint8_t ctrl7 = microStepperDriver.driver.readReg(DRV8434SRegAddr::CTRL7);
+    microStepperDriver.driver.writeReg(DRV8434SRegAddr::CTRL7, ctrl7 & ~(1111));
 
     // Enable Stall Detection learning.
     uint8_t ctrl5 = microStepperDriver.getCachedReg(DRV8434SRegAddr::CTRL5);
@@ -342,7 +343,6 @@ int ESP32PwmSpiDriver::setVelocity(float mmPerMinute)
     float distancePerStepMm = distancePerRotMm * degreesPerStep / 360.0F;
 
     // full winding step / second.
-    microStepperDriver.setStepMode(DRV8434SStepMode::MicroStep1);
     float stepPerSecond = mmPerMinute / distancePerStepMm;
     microStepSetting = 1;
 
@@ -364,6 +364,9 @@ int ESP32PwmSpiDriver::setVelocity(float mmPerMinute)
             return -1;
         }
     }
+    stepPerSecond = mmPerMinute * microStepSetting / distancePerStepMm;
+    uint32_t herz = round(stepPerSecond);
+
 
     switch (microStepSetting)
     {
@@ -398,12 +401,11 @@ int ESP32PwmSpiDriver::setVelocity(float mmPerMinute)
         break;
     }
 
-    stepPerSecond = mmPerMinute * microStepSetting / distancePerStepMm;
+    analogWriteFrequency(herz);
 
     Serial.printf("Microstep: %d\n", microStepSetting);
     Serial.print("Step Per Second ");
     Serial.println(stepPerSecond, 3);
-    uint32_t herz = round(stepPerSecond);
 
     if (herz <= 0)
     {
@@ -411,7 +413,6 @@ int ESP32PwmSpiDriver::setVelocity(float mmPerMinute)
         return -1;
     }
 
-    analogWriteFrequency(herz);
     return 0;
 }
 

@@ -11,7 +11,7 @@
 #define GROUP timer_group_t::TIMER_GROUP_0
 #define TIMER timer_idx_t::TIMER_1
 
-#define CONTROL_FREQ 2
+#define CONTROL_FREQ 1
 
 #define TIMER_DIVIDER 8
 #define TIMER_SCALE (TIMER_BASE_CLK / TIMER_DIVIDER)
@@ -32,7 +32,7 @@ void Team11ControlTask(void *parameters)
 Team11Control::Team11Control(float volumePerDistance, FluidDeliveryDriver *driver)
 {
     // TODO setup p_controller with appropriate values.
-    this->kP = 1.1;
+    this->kP = 0.01;
     this->kI = 0 * CONTROL_FREQ;
     this->kD = 0 * CONTROL_FREQ;
 
@@ -57,23 +57,20 @@ void Team11Control::controlTaskUpdate()
 
     float setpoint_mm_per_min;
     // global start time (no bolus)
-    unsigned long curr_time_ms = millis() - startTime; // f*** the user timer 
+    unsigned long curr_time_ms = millis() - startTime; // f*** the user timer
 
-    // time after bolus.
-    if (state == 2)
-    {
-        curr_time_ms - (bolusVolume * 1000 / bolusRate); // calculate current time is in ms.
-    }
-
-    float feedback_mm = startPosition - this->driver->getDistanceMm();
+    // float feedback_mm = startPosition - this->driver->getDistanceMm();
+    float feedback_mm = (state == 1 ? curr_time_ms * bolusRate : curr_time_ms * infusionRate) / 60.0F / 1000.0F;
     float feedback_mm_per_ms = (feedback_mm) * 1000 / curr_time_ms;
 
     bool detected = driver->occlusionDetected();
 
-    if (detected && (curr_time_ms < 2000))
+    if (detected && (curr_time_ms > 2000))
     {
         this->state = 4;
-        Serial.println("Occlusion detected.");
+        Serial.print("Occlusion detected at ");
+        Serial.print(curr_time_ms);
+        Serial.println("ms");
     }
 
     // Switch State
@@ -119,24 +116,30 @@ void Team11Control::controlTaskUpdate()
     // Set velocity for cases 2 & 1.
 
     float err = setpoint_mm_per_min - (feedback_mm_per_ms / 60000.0F);
-    
-    float new_speed_mm_per_min = (setpoint_mm_per_min + (err*kP) + (err*kI) + (err*kD));
 
-    if(new_speed_mm_per_min > 80) {
+    float new_speed_mm_per_min = (setpoint_mm_per_min + (err * kP) + (err * kI) + (err * kD));
+
+    if (new_speed_mm_per_min > 80)
+    {
         new_speed_mm_per_min = 80;
     }
 
-    Serial.print("CurrTime: ");
-    Serial.println(curr_time_ms);
-    Serial.print("Setpoint_mm per min: ");
-    Serial.println(setpoint_mm_per_min);
-    Serial.print("Feedback_mm per ms: ");
-    Serial.println(feedback_mm_per_ms);
-    Serial.print("Control Task New Speed, ");
-    Serial.print(new_speed_mm_per_min);
-    Serial.println(" mm/min");
+    if (err > 1)
+    {
+        Serial.print("CurrTime: ");
+        Serial.println(curr_time_ms);
+        Serial.print("Setpoint_mm per min: ");
+        Serial.println(setpoint_mm_per_min);
+        Serial.print("Feedback_mm per ms: ");
+        Serial.println(feedback_mm_per_ms);
+        Serial.print("Feedback_mm: ");
+        Serial.println(feedback_mm);
+        Serial.print("Control Task New Speed, ");
+        Serial.print(new_speed_mm_per_min);
+        Serial.println(" mm/min");
 
-    this->driver->setVelocity(new_speed_mm_per_min);
+        this->driver->setVelocity(new_speed_mm_per_min);
+    }
 }
 
 Team11Control::~Team11Control()
