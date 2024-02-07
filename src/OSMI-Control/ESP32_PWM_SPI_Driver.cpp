@@ -61,19 +61,20 @@ void ESP32PwmSpiDriver::initPulseCounter(void)
     upConfig.pulse_gpio_num = this->stepPin;
     downConfig.pulse_gpio_num = this->stepPin;
 
-    Serial.print("Up Config Pulse Pin: ");
-    Serial.println(upConfig.pulse_gpio_num);
+    /* Initialize PCNT unit */
+    pcnt_unit_config(&upConfig);
 
-    Serial.print("PCNT Configured: ");
-    Serial.println(pcnt_unit_config(&upConfig) == ESP_OK);
-
-    pcnt_filter_disable(DEFAULT_PCNT_UNIT);
     pcnt_event_enable(DEFAULT_PCNT_UNIT, PCNT_EVT_H_LIM);
     pcnt_event_enable(DEFAULT_PCNT_UNIT, PCNT_EVT_L_LIM);
+
     pcnt_counter_pause(DEFAULT_PCNT_UNIT);
+    pcnt_isr_service_install(0);
+    pcnt_isr_handler_add(DEFAULT_PCNT_UNIT, handlePCNTOverflow, (void *)this);
+
+
+    /* Initialize PCNT's counter */
     pcnt_counter_clear(DEFAULT_PCNT_UNIT);
-    pcnt_isr_register(handlePCNTOverflow, this, 0, &isrHandle);
-    pcnt_intr_enable(DEFAULT_PCNT_UNIT);
+    pcnt_counter_resume(DEFAULT_PCNT_UNIT);
 }
 
 /// @brief Setup PWM channel.
@@ -366,7 +367,6 @@ int ESP32PwmSpiDriver::setVelocity(float mmPerMinute)
     }
     stepPerSecond = mmPerMinute * microStepSetting / distancePerStepMm;
     uint32_t herz = round(stepPerSecond);
-
 
     switch (microStepSetting)
     {
